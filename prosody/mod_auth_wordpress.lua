@@ -3,10 +3,19 @@
 local md5 = require "util.hashes".md5;
 local new_sasl = require "util.sasl".new;
 local nodeprep = require "util.encodings".stringprep.nodeprep;
-
 local DBI;
 local connection;
 local params = module:get_option("wordpress");
+
+
+
+function wp_hash(password,salt)
+    local hash=md5(salt .. password);
+    for i = 0, 8192, 1 do
+         hash=md5(hash .. password)
+    end
+    local output='$P$B' .. salt
+
 
 function new_wordpress_provider(host)
   local provider = { name = "wordpress" };
@@ -24,6 +33,7 @@ function new_wordpress_provider(host)
         local row = stmt:fetch(true);
         
         local user_pass = row.user_pass;
+        local pass_salt=string.sub(user_pass,5,12);
         local md5_pass = md5(password, true);
         
         pass = md5_pass == user_pass;

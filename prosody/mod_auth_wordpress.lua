@@ -1,5 +1,5 @@
 -- Prosody Wordpress Authentication
-
+local bit = require("bit");
 local md5 = require "util.hashes".md5;
 local new_sasl = require "util.sasl".new;
 local nodeprep = require "util.encodings".stringprep.nodeprep;
@@ -8,13 +8,47 @@ local connection;
 local params = module:get_option("wordpress");
 
 
+function encode64(input,count)
+  local index_table = './0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+	local output="";
+	local i=0;
+	while i< count do
+		i=i+1
+		local value=string.byte (string.sub(input,i,i));
+		local pos=bit.band(value,0x3f);
+		output =output .. string.sub(index_table,pos+1,pos+1);
+		if i < count then
+			value = bit.bor(value,bit.lshift(string.byte(string.sub(input,i+1,i+1)),8));
+		end	
+		local tmp= bit.band(bit.rshift(value,6),0x3f);
+		output=output  .. string.sub(index_table,tmp+1,tmp+1);
+		i=i+1;
+		if i >= count then
+			break;
+		end	
+		if i<count then
+			value = bit.bor(value,bit.lshift(string.byte(string.sub(input,i+1,i+1)),16));
+		end
+		tmp= bit.band(bit.rshift(value,12),0x3f);
+		output=output .. string.sub(index_table,tmp+1,tmp+1);
+		i=i+1;
+		if i >= count then
+			break;
+		end	
+		tmp= bit.band(bit.rshift(value,18),0x3f);
+		output=output .. string.sub(index_table,tmp+1,tmp+1);
+	end
+	return output;
+end
 
 function wp_hash(password,salt)
     local hash=md5(salt .. password);
     for i = 0, 8192, 1 do
-         hash=md5(hash .. password)
+         hash=md5(hash .. password);
     end
-    local output='$P$B' .. salt
+    local output='$P$B' .. salt .. encode64(input,16);
+    return output;
+end
 
 
 function new_wordpress_provider(host)
@@ -34,7 +68,7 @@ function new_wordpress_provider(host)
         
         local user_pass = row.user_pass;
         local pass_salt=string.sub(user_pass,5,12);
-        local md5_pass = md5(password, true);
+        local md5_pass = wp_hash(password,pass_salt);
         
         pass = md5_pass == user_pass;
       end
@@ -50,9 +84,9 @@ function new_wordpress_provider(host)
     
   end
 
-  function provider.get_password(username) return nil, "Password unavailable for Wordpress."; end
-  function provider.set_password(username, password) return nil, "Password unavailable for Wordpress."; end
-  function provider.create_user(username, password) return nil, "Account creation/modification not available with Wordpress.";  end
+  function provider.get_password(username) return nil, "Password unavailable for Wordpress login."; end
+  function provider.set_password(username, password) return nil, "Password unavailable for Wordpress login."; end
+  function provider.create_user(username, password) return nil, "Account creation/modification not available with Wordpress login.";  end
 
   function provider.user_exists(username)
     module:log("debug", "Exists %s", username);
@@ -146,7 +180,7 @@ do -- process options to get a db connection
 	params.host = params.host or "localhost";
 	params.port = params.port or 3306;
 	params.database = params.database or "wordpress";
-	params.username = params.username or "root";
+	params.username = params.username or "NOTroot";
 	params.password = params.password or "";
 	params.prefix = params.prefix or "wp_";
 	
